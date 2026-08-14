@@ -1336,9 +1336,10 @@ jobs:
 
           ./configure \
             --cross-compiling \
+            --shared \
             --dest-os=android \
             --dest-cpu=${{ matrix.dest_cpu }} \
-            --with-intl=none \
+            --with-intl=none \ 
             --without-npm \
             $NODEEXTRA \
             $OPENSSL_ASM_FLAG \
