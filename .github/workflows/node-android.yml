@@ -142,7 +142,6 @@ jobs:
           if [ "$REQ" = "custom" ]; then REQ="$CUSTOM_REF_RAW"; fi
           if [ -z "$REQ" ]; then echo "::error::custom_ref is empty"; exit 1; fi
           echo "NODE_REF=$REQ" >> "$GITHUB_ENV"
-
           NAME="$LIB_NAME_RAW"
           NAME="${NAME#lib}"; NAME="${NAME%.so}"
           if ! [[ "$NAME" =~ ^[A-Za-z0-9_-]+$ ]]; then
@@ -150,7 +149,6 @@ jobs:
           fi
           echo "LIB_NAME=$NAME" >> "$GITHUB_ENV"
           echo "Building Node.js '$REQ' as lib$NAME.so"
-
       # ---------- 1. Android NDK (r29) ----------
       # Switched from a manual curl+unzip to nttld/setup-ndk to match the
       # v24-only workflow this was diffed against. The manual download step
@@ -170,7 +168,6 @@ jobs:
           TC="${ANDROID_NDK_HOME:-$ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64"
           test -x "$TC/bin/${{ matrix.target }}${{ env.MIN_API }}-clang"
           echo "NDK OK: ${ANDROID_NDK_HOME:-$ANDROID_NDK}"
-
       # ---------- 1b. ccache ----------
       # Everything above this point is seconds; the ~2h this job takes is almost
       # entirely the make step in section 4 — a from-scratch V8+Node compile with
@@ -183,7 +180,6 @@ jobs:
         run: |
           echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
           echo "CCACHE_MAXSIZE=2G" >> "$GITHUB_ENV"
-
       - name: Cache ccache directory
         uses: actions/cache@v4
         with:
@@ -191,7 +187,6 @@ jobs:
           key: ccache-${{ matrix.abi }}-${{ env.NODE_REF }}-${{ inputs.profile || 'balanced' }}-${{ github.run_id }}
           restore-keys: |
             ccache-${{ matrix.abi }}-${{ env.NODE_REF }}-${{ inputs.profile || 'balanced' }}-
-
       # ---------- 2. Host build tools ----------
       - name: Install host build tools
         run: |
@@ -199,7 +194,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             python3 g++ make git ca-certificates ccache
-
       - name: Install 32-bit multilib (armeabi-v7a only)
         if: matrix.dest_cpu == 'arm'
         run: sudo apt-get install -y gcc-multilib g++-multilib
@@ -248,31 +242,25 @@ jobs:
           import pathlib
           import subprocess
           import os
-
           vh_path = pathlib.Path('src/node_version.h')
           vh = vh_path.read_text()
-
           def grab(name):
               m = re.search(rf'#define\s+{name}\s+(\S+)', vh)
               if not m:
                   print(f"::error::could not find {name} in {vh_path}")
                   raise SystemExit(1)
               return m.group(1)
-
           major = grab('NODE_MAJOR_VERSION')
           minor = grab('NODE_MINOR_VERSION')
           patch = grab('NODE_PATCH_VERSION')
           is_release = grab('NODE_VERSION_IS_RELEASE')
-
           version = f"{major}.{minor}.{patch}"
           if is_release != "1":
               version += "-dev"
-
           sha_full = subprocess.check_output(
               ['git', 'rev-parse', 'HEAD'], text=True
           ).strip()
           sha_short = sha_full[:10]
-
           # Sanity check: version must be a plain dotted-numeric triple
           # (optionally -dev), since it flows straight into filenames —
           # never trust an upstream macro format silently enough to skip
@@ -280,18 +268,15 @@ jobs:
           if not re.fullmatch(r'\d+\.\d+\.\d+(-dev)?', version):
               print(f"::error::resolved version '{version}' failed sanity check")
               raise SystemExit(1)
-
           gh_env = os.environ['GITHUB_ENV']
           with open(gh_env, 'a') as f:
               f.write(f"RESOLVED_NODE_VERSION={version}\n")
               f.write(f"NODE_COMMIT_SHA={sha_full}\n")
               f.write(f"NODE_COMMIT_SHORT={sha_short}\n")
-
           print(f"Requested ref:     {os.environ.get('NODE_REF', '(unset)')}")
           print(f"Resolved version:  {version}")
           print(f"Commit:            {sha_full}")
           PYEOF
-
       # ---------- 3b. Patch known Android cross-build issues ----------
       # Android is not an officially tested/supported Node.js target (core team
       # position, see nodejs/node#58505) — these are community-tracked issues
@@ -316,7 +301,6 @@ jobs:
                   return
               p.write_text(s.replace(old, new, 1))
               print(f"patched {path}")
-
           patch('deps/v8/src/base/debug/stack_trace_posix.cc',
                 '#include "src/base/build_config.h"\n#include "src/base/free_deleter.h"',
                 '#if defined(__ANDROID__)\n'
@@ -325,7 +309,6 @@ jobs:
                 'extern "C" void backtrace_symbols_fd(void* const*, int, int) {}\n'
                 '#endif\n\n'
                 '#include "src/base/build_config.h"\n#include "src/base/free_deleter.h"')
-
           th = pathlib.Path('deps/v8/src/trap-handler/trap-handler.h')
           c = th.read_text()
           ms = '// X64 on Linux, Windows, MacOS, FreeBSD.'
@@ -336,12 +319,10 @@ jobs:
               th.write_text(c); print("patched trap-handler.h")
           else:
               print("::warning::trap-handler block boundaries not found")
-
           patch('deps/uv/uv.gyp',
                 '\n'.join(["      'target_name': 'libuv',","      'toolsets': ['host', 'target'],","      'type': '<(uv_library)',","      'include_dirs': [","        'include',","        'src/',","      ],"]),
                 '\n'.join(["      'target_name': 'libuv',","      'toolsets': ['host', 'target'],","      'type': '<(uv_library)',","      'include_dirs+': [","        'include',","        'src/',","      ],"]))
           patch('deps/uv/uv.gyp', "        'include_dirs': [ 'include' ],", "        'include_dirs+': [ 'include' ],")
-
           patch('deps/uv/src/unix/fs.c',
                 '#ifdef FICLONE\n'
                 '  if (req->flags & UV_FS_COPYFILE_FICLONE ||\n'
@@ -350,11 +331,9 @@ jobs:
                 '#ifdef FICLONE\n'
                 '  if (req->flags & UV_FS_COPYFILE_FICLONE ||\n'
                 '      req->flags & UV_FS_COPYFILE_FICLONE_FORCE) {')
-
           patch('test/cctest/test_crypto_clienthello.cc',
                 "    alloc_base = static_cast<uint8_t*>(aligned_alloc(page, 2 * page));",
                 "    CHECK_EQ(posix_memalign(reinterpret_cast<void**>(&alloc_base), page, 2 * page), 0);")
-
           fc = pathlib.Path('deps/uv/src/unix/fs.c')
           s = fc.read_text()
           oc = '\n'.join(['    goto out;','  }','#endif','','  bytes_to_send = src_statsbuf.st_size;'])
@@ -364,7 +343,6 @@ jobs:
           else:
               fc.write_text(s.replace(oc, nc, 1)); print("closed #ifndef __ANDROID__ in fs.c")
           PYEOF
-
       - name: "Patch V8: atomic_ref polyfill + memcopy + wasm-shuffle"
         working-directory: node
         run: |
@@ -381,7 +359,6 @@ jobs:
                   return
               p.write_text(s.replace(old, new, 1))
               print(f"patched {path}")
-
           v8config_h = pathlib.Path('deps/v8/include/v8config.h')
           s = v8config_h.read_text()
           old_atomic_line = '#include <memory>'
@@ -424,16 +401,13 @@ jobs:
               print("patched v8config.h (std::atomic_ref polyfill)")
           else:
               print("::warning::could not find '#include <memory>' in v8config.h")
-
           patch('deps/v8/src/base/memcopy.h',
                 '    std::atomic_ref<T>(destination[i]).store(value, std::memory_order_relaxed);',
                 '    __atomic_store_n(&destination[i], value, __ATOMIC_RELAXED);')
-
           patch('deps/v8/src/compiler/turboshaft/wasm-shuffle-reducer.cc',
                 '    wasm::SimdShuffle::ShuffleArray shuffle_bytes;',
                 '    wasm::SimdShuffle::ShuffleArray<kSimd128Size> shuffle_bytes;')
           PYEOF
-
       - name: "Patch V8: consteval/immediate-escalation clang bug in regexp bytecode dispatch"
         # clang bug: llvm-project#94935 — a consteval function called with an
         # argument that depends on an enclosing template/lambda parameter is
@@ -467,7 +441,6 @@ jobs:
                   return
               p.write_text(s.replace(old, new, 1))
               print(f"patched {path}")
-
           f = 'deps/v8/src/regexp/regexp-bytecodes-inl.h'
           patch(f, 'static consteval int Index(Operand op)',
                    'static constexpr int Index(Operand op)')
@@ -478,7 +451,6 @@ jobs:
           patch(f, 'static consteval RegExpBytecodeOperandType Type(Operand op) {',
                    'static constexpr RegExpBytecodeOperandType Type(Operand op) {')
           PYEOF
-
       - name: "Patch V8: zlib cpu_features (getauxval replacement)"
         working-directory: node
         run: |
@@ -495,7 +467,6 @@ jobs:
                   return
               p.write_text(s.replace(old, new, 1))
               print(f"patched {path}")
-
           zlib_c = pathlib.Path('deps/zlib/cpu_features.c')
           s = zlib_c.read_text()
           old_incl = (
@@ -512,7 +483,6 @@ jobs:
               s = s.replace(old_incl, new_incl, 1); print("patched cpu_features.c (includes)")
           else:
               print("::warning::include block not found")
-
           old_aarch64 = (
               '#if defined(ARMV8_OS_ANDROID) && defined(__aarch64__)\n'
               '    uint64_t features = android_getCpuFeatures();\n'
@@ -527,7 +497,6 @@ jobs:
               s = s.replace(old_aarch64, new_aarch64, 1); print("patched cpu_features.c (aarch64)")
           else:
               print("::warning::aarch64 branch not found")
-
           old_aarch32 = (
               '#elif defined(ARMV8_OS_ANDROID) /* aarch32 */\n'
               '    uint64_t features = android_getCpuFeatures();\n'
@@ -544,7 +513,6 @@ jobs:
               print("::warning::aarch32 branch not found")
           zlib_c.write_text(s)
           PYEOF
-
       - name: "Patch V8: gyp toolchain + cross-compile config"
         working-directory: node
         run: |
@@ -561,7 +529,6 @@ jobs:
                   return
               p.write_text(s.replace(old, new, 1))
               print(f"patched {path}")
-
           patch('tools/v8_gypfiles/v8.gyp',
                 "        ['(OS==\"linux\" and clang==1) or (v8_current_cpu in [\"mips64\", \"mips64el\", \"arm\", \"riscv64\", \"loong64\"])', {",
                 "        ['((OS==\"linux\" or OS==\"android\") and clang==1) or (v8_current_cpu in [\"mips64\", \"mips64el\", \"arm\", \"riscv64\", \"loong64\"])', {")
@@ -637,7 +604,6 @@ jobs:
                 '          }                                                                 \\\n'
                 '        }')
           PYEOF
-
       # ---------- FIXED 2026-07-18 ----------
       # Root cause of the "expected '}'" / "namespaces can only be defined in
       # global or namespace scope" cascade in pipeline.cc, confirmed against the
@@ -685,11 +651,9 @@ jobs:
           python3 - <<'PYEOF'
           import pathlib
           import re
-
           assembler_h = pathlib.Path('deps/v8/src/compiler/turboshaft/assembler.h')
           if assembler_h.exists():
               s = assembler_h.read_text()
-
               # CRTP two-phase lookup fix for Clang C++20:
               # AssemblerOpInterface<Next> : public Next uses non-dependent member
               # names from the class body. In C++20, Clang requires these to be
@@ -706,10 +670,8 @@ jobs:
                   '  TURBOSHAFT_REDUCER_BOILERPLATE(AssemblerOpInterface)\n\n  template <typename... Args>',
                   '  TURBOSHAFT_REDUCER_BOILERPLATE(AssemblerOpInterface)\n\n  OperationMatcher matcher_;\n\n  template <typename... Args>')
               s = s.replace('  OperationMatcher matcher_;\n};', '};')
-
               # 2. matcher_ in body getter (this-> is still needed for CRTP)
               s = s.replace('{ return matcher_; }', '{ return this->matcher_; }')
-
               # 3. ReduceIfReachable calls — qualify call sites ONLY.
               # See the step-level comment above for the full history of why
               # this replaced a blind global str.replace().
@@ -721,7 +683,6 @@ jobs:
               # 'ReduceIfReachable##operation'. The negative lookahead below
               # excludes exactly the token-paste shape and nothing else.
               s = re.sub(r'\bReduceIfReachable(?!##)', r'this->ReduceIfReachable', s)
-
               # 3b. Macro bodies use token-paste: ReduceIfReachable##operation.
               # The regex above correctly skips these (negative lookahead for ##),
               # but the EXPANDED macros produce bare names like
@@ -731,7 +692,6 @@ jobs:
               # Valid because ## only pastes the two adjacent tokens
               # (ReduceIfReachable + operation), this-> is before them.
               s = s.replace('return ReduceIfReachable##', 'return this->ReduceIfReachable##')
-
               # 4. resolve() calls — only in call contexts, never in function defs
               s = s.replace('(resolve(', '(this->resolve(')
               s = s.replace(', resolve(', ', this->resolve(')
@@ -747,9 +707,7 @@ jobs:
               s = s.replace(
                   '      return Int32OpName(TruncateWordPtrToWord32(l),                       \\',
                   '      return this->Int32OpName(TruncateWordPtrToWord32(l),                 \\')
-
               print(f"patched {assembler_h} (CRTP dependent names)")
-
               # Comment out the problematic static assertions in SMI_COMPARISON_OP macro.
               # Use /* */ block comment (NOT // line comment): phase 2 line splicing runs
               # before phase 3 comment recognition. A '//' comment with trailing '\' would
@@ -764,15 +722,12 @@ jobs:
                   '      /* static_assert(kTaggedSize == kInt32Size);                            \\\n'
                   '      static_assert(v8::internal::SmiValuesAre31Bits());                   */ \\'
               )
-
               if old_macro in s:
                   s = s.replace(old_macro, new_macro, 1)
                   print("patched assembler.h (SMI_COMPARISON_OP assertions)")
               else:
                   print("::warning::SMI_COMPARISON_OP assertions not found in assembler.h")
-
               assembler_h.write_text(s)
-
               # ----- Post-patch syntax sanity checks -----
               errors = []
               if 'V<Rep> this->resolve(' in s:
@@ -800,7 +755,6 @@ jobs:
           else:
               print("::warning::assembler.h not found")
           PYEOF
-
       # ---------- NEW 2026-07-18 ----------
       # Root cause of "'v8::internal::compiler::turboshaft::Operation::input_count'
       # is not a member of class ...WasmWrapperTSGraphBuilder<...>" in
@@ -841,7 +795,6 @@ jobs:
         run: |
           python3 - <<'PYEOF'
           import pathlib
-
           def patch(path, old, new):
               p = pathlib.Path(path)
               if not p.exists():
@@ -854,11 +807,9 @@ jobs:
               p.write_text(s.replace(old, new, 1))
               print(f"patched {path}")
               return True
-
           wrappers_inl = pathlib.Path('deps/v8/src/wasm/wrappers-inl.h')
           if wrappers_inl.exists():
               s = wrappers_inl.read_text()
-
               # Ensure <utility> is included for std::declval (don't rely on
               # transitive inclusion via <limits>/other STL headers).
               incl_anchor = '#include "src/heap/factory-base-inl.h"'
@@ -866,7 +817,6 @@ jobs:
                   s = s.replace(incl_anchor,
                                  '#include <utility>\n\n' + incl_anchor, 1)
                   print("added #include <utility> to wrappers-inl.h")
-
               old_check = (
                   '  SBXCHECK_LT(\n'
                   '      args.size(),\n'
@@ -884,7 +834,6 @@ jobs:
                   s = s.replace(old_check, new_check, 1)
                   wrappers_inl.write_text(s)
                   print("patched wrappers-inl.h (SBXCHECK_LT input_count decltype)")
-
                   # Sanity check: confirm the bare class-scope form is gone and
                   # the declval form landed exactly once, so a future upstream
                   # reformatting of this block fails loudly here instead of
@@ -905,7 +854,6 @@ jobs:
           else:
               print("::warning::wrappers-inl.h not found")
           PYEOF
-
       # ---------- NEW 2026-07-19 ----------
       # Root cause of "no member named 'atomic_base64_to_binary_safe' /
       # 'atomic_binary_to_base64' in namespace 'simdutf'" plus the follow-on
@@ -973,11 +921,9 @@ jobs:
         run: |
           python3 - <<'PYEOF'
           import pathlib
-
           bta = pathlib.Path('deps/v8/src/builtins/builtins-typed-array.cc')
           if bta.exists():
               s = bta.read_text()
-
               old_decode = (
                   "  simdutf::result simd_result;\n"
                   "  if (typed_array->buffer()->is_shared()) {\n"
@@ -1031,7 +977,6 @@ jobs:
                         "in builtins-typed-array.cc — upstream may have reformatted this "
                         "site; re-check manually if the arm64-v8a/armeabi-v7a build still "
                         "fails on this file")
-
               old_encode = (
                   "    size_t simd_result_size;\n"
                   "    if (uint8array->buffer()->is_shared()) {\n"
@@ -1076,10 +1021,8 @@ jobs:
                         "builtins-typed-array.cc — upstream may have reformatted this "
                         "site; re-check manually if the arm64-v8a/armeabi-v7a build still "
                         "fails on this file")
-
               if decode_ok or encode_ok:
                   bta.write_text(s)
-
                   # Sanity check: every remaining simdutf::atomic_ call must now sit
                   # inside a non-Android #else branch (or be the comment mentioning it),
                   # so a future upstream reformat that silently reintroduces an
@@ -1093,12 +1036,10 @@ jobs:
           else:
               print("::warning::builtins-typed-array.cc not found")
           PYEOF
-
           echo "Skipped from Termux's patch set (not applicable to generic NDK cross-build):"
           echo "  - deps-uv-src-unix-core.c.patch, deps-v8-src-flags-flag-definitions.h.patch:"
           echo "    swap /data/local/tmp for @TERMUX_PREFIX@/tmp placeholder."
           echo "  - deps-uv-src-unix-process.c.patch: strips post-fork privilege-drop calls."
-
       # ---------- 3c. Patch OpenSSL asm target selection for Android ----------
       # Root cause of "invalid output constraint '=a'/'+d' in asm" in
       # deps/openssl/openssl/crypto/bn/asm/x86_64-gcc.c, on BOTH arm64-v8a
@@ -1147,13 +1088,11 @@ jobs:
         run: |
           python3 - <<'PYEOF'
           import pathlib
-
           gypi = pathlib.Path('deps/openssl/openssl_asm.gypi')
           if not gypi.exists():
               print("::warning::deps/openssl/openssl_asm.gypi not found")
           else:
               s = gypi.read_text()
-
               arm_old = 'target_arch=="arm" and OS=="linux"'
               arm_new = 'target_arch=="arm" and OS in "linux android"'
               if arm_old in s:
@@ -1161,7 +1100,6 @@ jobs:
                   print(f"patched {gypi} (arm branch)")
               else:
                   print(f"::warning::arm branch text not found in {gypi}")
-
               arm64_old = 'target_arch=="arm64" and OS in "linux openharmony"'
               arm64_new = 'target_arch=="arm64" and OS in "linux openharmony android"'
               if arm64_old in s:
@@ -1169,7 +1107,6 @@ jobs:
                   print(f"patched {gypi} (arm64 branch)")
               else:
                   print(f"::warning::arm64 branch text not found in {gypi}")
-
               # Fix the misleading catchall comment (cosmetic, but this
               # comment directly caused confusion during triage — leaving
               # it wrong would mislead the next person too).
@@ -1189,9 +1126,7 @@ jobs:
                   print(f"patched {gypi} (catchall comment)")
               else:
                   print("::warning::catchall comment text not found (already patched or upstream reworded it)")
-
               gypi.write_text(s)
-
               # ----- Post-patch sanity checks -----
               s = gypi.read_text()
               errors = []
@@ -1209,14 +1144,12 @@ jobs:
                   exit(1)
               print("patch syntax sanity check: OK")
           PYEOF
-
       # ---------- 4. Cross-compile ----------
       - name: Cross-compile Node.js for ${{ matrix.abi }}
         working-directory: node
         run: |
           export TC="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
           export PATH="$TC/bin:$PATH"
-
           # Target toolchain (API level via wrapper suffix == -DANDROID_PLATFORM=android-24)
           export CC="ccache $TC/bin/${{ matrix.target }}${{ env.MIN_API }}-clang"
           export CXX="ccache $TC/bin/${{ matrix.target }}${{ env.MIN_API }}-clang++"
@@ -1237,7 +1170,6 @@ jobs:
           export STRIP="$TC/bin/llvm-strip"
           export READELF="$TC/bin/llvm-readelf"
           # NOTE: do not export LINK — gyp reads it for the HOST linker and breaks.
-
           # CRITICAL: host build tools must use the host compiler.
           # Without this, configure probes the ARM clang and thinks host_arch=arm,
           # and host tools (torque/mksnapshot) get built with the Android toolchain.
@@ -1257,17 +1189,14 @@ jobs:
             export CC_host="ccache gcc"
             export CXX_host="ccache g++"
           fi
-
           if [ "${{ matrix.dest_cpu }}" = "arm" ]; then
             export CFLAGS_host=-m32 CXXFLAGS_host=-m32 LDFLAGS_host=-m32
             HOST_ARCH_GYP="ia32"
           else
             HOST_ARCH_GYP="x64"
           fi
-
           # android_ndk_path is REQUIRED (node.gyp fails without it)
           export GYP_DEFINES="OS=android host_os=linux target_arch=${{ matrix.dest_cpu }} v8_target_arch=${{ matrix.dest_cpu }} android_target_arch=${{ matrix.dest_cpu }} android_ndk_path=${ANDROID_NDK_HOME} host_arch=$HOST_ARCH_GYP v8_host_arch=$HOST_ARCH_GYP"
-
           # LAST-RESORT FALLBACK (only if trap-handler.h.patch above does not clear
           # the mksnapshot link error — e.g. the patch went stale for this Node
           # version, per the staleness history in nodejs/node#60369): forcibly drops
@@ -1275,7 +1204,6 @@ jobs:
           # fixing the source. Costs WASM OOB-trap fast paths in the resulting
           # libnode.so; leave commented unless the patch step above proves insufficient.
           # export GYP_DEFINES="$GYP_DEFINES v8_enable_webassembly=false"
-
           # 16 KB page alignment for Android 15/16 devices.
           # -rdynamic (alias -Wl,--export-dynamic) exports all Node/V8 symbols
           # from the node binary itself. Without --shared, gyp no longer creates
@@ -1284,13 +1212,11 @@ jobs:
           # (node-gyp/node-addon-api) and trap-handler/mksnapshot internals
           # previously depended on the dynamic symbol table of libnode.so.
           export LDFLAGS="$LDFLAGS -Wl,-z,max-page-size=16384 -rdynamic -Wl,--export-dynamic"
-
           EXTRA_FLAGS=""
           case "${{ inputs.profile || 'balanced' }}" in
             speed) EXTRA_FLAGS="--enable-lto" ;;
             size)  EXTRA_FLAGS="--v8-lite-mode" ;;
           esac
-
           # ---- Crypto perf: use OpenSSL's asm-optimized routines where safe ----
           # UPDATED 2026-07-22 (second pass): the actual bug was upstream in
           # deps/openssl/openssl_asm.gypi, not in this flag. That file's
@@ -1327,24 +1253,21 @@ jobs:
           # 20-error asm cascade; flip to enabling by default once this
           # has run clean at least once end-to-end on CI.
           OPENSSL_ASM_FLAG="--openssl-no-asm"
-
           # --without-corepack was removed in Node.js v26.x
           NODEEXTRA=""
           if ./configure --help 2>&1 | grep -q without-corepack; then
             NODEEXTRA="--without-corepack"
           fi
-
           ./configure \
             --cross-compiling \
-            --shared \
             --dest-os=android \
+            --shared \
             --dest-cpu=${{ matrix.dest_cpu }} \
-            --with-intl=none \ 
+            --with-intl=none \
             --without-npm \
             $NODEEXTRA \
             $OPENSSL_ASM_FLAG \
             $EXTRA_FLAGS
-
           # LINK.host/AR.host overrides are belt-and-braces (gyp leaves LINK.host empty
           # in some configurations, silently breaking host-tool linking).
           # Build ONLY the 'node' target: produces both out/Release/node (CLI)
@@ -1358,10 +1281,8 @@ jobs:
           else
             make -j"$(nproc)" node CC.host="ccache gcc" CXX.host="ccache g++" LINK.host="g++" AR.host=ar
           fi
-
           echo "---- ccache stats (${{ matrix.abi }}) ----"
           ccache -s
-
       # ---------- 5. Rename, strip, verify, bundle libc++_shared.so ----------
       # `node` stays a fully static, standalone binary — it must never
       # dynamically depend on libc++_shared.so (hard-checked below). A copy
@@ -1383,41 +1304,32 @@ jobs:
         working-directory: node
         run: |
           TC="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
-
           echo "Directory structure under out/Release:"
           find out/Release -maxdepth 3 -type d
-
           if [ ! -f "out/Release/node" ]; then
             echo "::error::out/Release/node not found — build step may have failed"
             exit 1
           fi
-
           "$TC/bin/llvm-readelf" -h "out/Release/node" | grep -E 'Class|Machine|Type'
-
           if [ ! -e node ] || [ "$(readlink -f out/Release/node)" != "$(readlink -f node)" ]; then
             cp out/Release/node node
           else
             echo "out/Release/node and node are already the same file, skipping copy"
           fi
-
           # --export-dynamic marks symbols via .dynsym, so strip-all is safe.
           "$TC/bin/llvm-strip" --strip-all node
-
           echo "---- ELF type check ----"
           "$TC/bin/llvm-readelf" -h node | grep -E 'Class|Machine|Type'
           echo "---- Exported dynamic symbol count ----"
           "$TC/bin/llvm-readelf" --dyn-syms node | wc -l
-
           # ---- HARD CHECK: node itself must stay fully static/standalone ----
           echo "---- NEEDED entries (must NOT contain libc++_shared.so) ----"
           NEEDED="$("$TC/bin/llvm-readelf" -d node | grep NEEDED || true)"
           echo "$NEEDED"
-
           if echo "$NEEDED" | grep -q 'libc++_shared'; then
             echo "::error::node still links dynamically against libc++_shared.so. The -static-libstdc++ flag did not take effect. Inspect the link command above."
             exit 1
           fi
-
           # ---- Verify ELF hash table is intact ----
           READELF_OUT="$("$TC/bin/llvm-readelf" -d node 2>&1)"
           if ! echo "$READELF_OUT" | grep -qE '\(GNU_HASH\)|\(HASH\)'; then
@@ -1425,17 +1337,14 @@ jobs:
             echo "$READELF_OUT"
             exit 1
           fi
-
           # ---- Bundle libc++_shared.so alongside (node does not link against it) ----
           case "${{ matrix.dest_cpu }}" in
             arm) SYSROOT_TRIPLE="arm-linux-androideabi" ;;
             *)   SYSROOT_TRIPLE="${{ matrix.target }}" ;;
           esac
           cp "$TC/sysroot/usr/lib/${SYSROOT_TRIPLE}/libc++_shared.so" .
-
           echo "---- node + libc++_shared.so ready in $(pwd) ----"
           ls -lh node libc++_shared.so
-
       # ---------- 6. Stage and upload one combined artifact per ABI ----------
       # FIXED 2026-07-23: previously this was two separate upload-artifact
       # steps (binary+libc++ in one artifact, headers in another), and the
@@ -1491,11 +1400,9 @@ jobs:
           # release zip for this ABI, nothing added or renamed later.
           STAGE_DIR="../${LIB_NAME}-v${RESOLVED_NODE_VERSION}-android-${{ matrix.abi }}"
           mkdir -p "$STAGE_DIR"
-
           cp node "$STAGE_DIR/node"
           chmod +x "$STAGE_DIR/node"
           cp libc++_shared.so "$STAGE_DIR/libc++_shared.so"
-
           # ---- Package Node.js headers into the same staged directory ----
           # Each ABI gets its own headers, NOT merged across ABIs. Reason:
           # config.gypi is generated by ./configure per-leg and its
@@ -1517,13 +1424,11 @@ jobs:
           cp src/*.h "$HDR_DIR/"
           cp -r deps/v8/include/. "$HDR_DIR/"
           cp -r deps/uv/include/. "$HDR_DIR/"
-
           echo "---- Staged contents for ${{ matrix.abi }} ----"
           find "$STAGE_DIR" -maxdepth 2
           echo "---- Header count ----"
           find "$HDR_DIR" -name "*.h" | wc -l
           grep -E "target_arch|byteorder" "$HDR_DIR/config.gypi"
-
       - name: Upload combined artifact (${{ matrix.abi }})
         if: success()
         uses: actions/upload-artifact@v7
@@ -1573,11 +1478,9 @@ jobs:
           if [ "$REQ" = "custom" ]; then REQ="$CUSTOM_REF_RAW"; fi
           test -n "$REQ" || REQ="v26.x"
           echo "NODE_REF=$REQ" >> "$GITHUB_ENV"
-
           NAME="$LIB_NAME_RAW"
           NAME="${NAME#lib}"; NAME="${NAME%.so}"
           echo "LIB_NAME=$NAME" >> "$GITHUB_ENV"
-
           # Tag: reuse the pushed tag verbatim when this run WAS a tag push
           # (respects a manually-chosen version tag like v26.0.1-android);
           # otherwise synthesize one from build metadata + run_number so
@@ -1590,7 +1493,6 @@ jobs:
             SAFE_REF="$(echo "$REQ" | tr -c 'A-Za-z0-9_.-' '-')"
             echo "RELEASE_TAG=${NAME}-android-${SAFE_REF}-run${{ github.run_number }}" >> "$GITHUB_ENV"
           fi
-
       # merge-multiple: false (the default) is required now, not just safer.
       # Previously this was `true`, on the theory that flattening
       # binary/libc++/headers artifacts into one shared dist/ directory
@@ -1646,7 +1548,6 @@ jobs:
             echo "RESOLVED_NODE_VERSION=${VERSION}" >> "$GITHUB_ENV"
             echo "Resolved Node.js version from artifact: $VERSION"
           fi
-
       # actions/upload-artifact does not preserve Unix file permissions —
       # confirmed in its own docs/known issue (actions/upload-artifact#38,
       # open since 2019): every file lands as mode 644 after a
@@ -1669,7 +1570,6 @@ jobs:
           for f in dist/*/node; do
             ls -l "$f"
           done
-
       # This is the only place any archive gets made for actual
       # distribution — once, here. The build job intentionally uploads a
       # raw directory (section 6) instead of pre-archiving, to avoid a
@@ -1691,7 +1591,6 @@ jobs:
             ( cd "$d" && zip -rq "$GITHUB_WORKSPACE/release-assets/${name}.zip" . )
           done
           ls -lh release-assets || echo "::warning::release-assets is empty — did every matrix leg fail?"
-
       - name: Create/Update GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -1711,7 +1610,6 @@ jobs:
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
           body: |
             **Automated Android build**
-
             | | |
             |---|---|
             | Node.js version | `${{ env.RESOLVED_NODE_VERSION }}` |
@@ -1721,7 +1619,6 @@ jobs:
             | NDK version | `${{ env.NDK_VERSION }}` |
             | Trigger | `${{ github.event_name }}` |
             | Commit | `${{ github.sha }}` |
-
             "Requested ref" is the branch/tag/custom ref that was asked for
             (e.g. `v26.x`, which is a moving branch, not a fixed version) —
             "Node.js version" above is what that ref actually resolved to
@@ -1729,10 +1626,8 @@ jobs:
             after clone. A `-dev` suffix means this commit is not itself a
             tagged Node.js release, just wherever its release branch
             currently sits.
-
             arm64-v8a is always included when the build succeeds; armeabi-v7a
             is experimental and only present below if that leg also succeeded.
-
             Each `${{ env.LIB_NAME }}-v${{ env.RESOLVED_NODE_VERSION }}-android-<abi>.zip`
             contains everything needed for that ABI in one download — the
             binary, its runtime companion library, and headers for
