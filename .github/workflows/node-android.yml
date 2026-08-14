@@ -1040,6 +1040,58 @@ jobs:
           echo "  - deps-uv-src-unix-core.c.patch, deps-v8-src-flags-flag-definitions.h.patch:"
           echo "    swap /data/local/tmp for @TERMUX_PREFIX@/tmp placeholder."
           echo "  - deps-uv-src-unix-process.c.patch: strips post-fork privilege-drop calls."
+      # ---------- 3b-end. Patch android_configure.py (nodejs-mobile parity) ----------
+      # The actual build path (section 4) sets CC_host/CXX_host, the OS=android
+      # GYP_DEFINES, and ./configure's --shared / --with-intl=none directly, so
+      # this step does not change the build. It keeps the repo's own
+      # android_configure.py byte-identical to the nodejs-mobile patch set, so
+      # the script behaves the same if anyone runs it on a runner:
+      #   - host gcc/g++ exported as CC_host/CXX_host
+      #   - GYP_DEFINES uses ANDROID_NDK_ROOT + ANDROID_NDK_SYSROOT
+      #   - configure invoked with --with-intl=none and --shared
+      - name: "Patch android-configure: nodejs-mobile host CC/CXX + NDK env + shared/intl"
+        working-directory: node
+        run: |
+          python3 - <<'PYEOF'
+          import pathlib
+          def patch(path, old, new):
+              p = pathlib.Path(path)
+              if not p.exists():
+                  print(f"::warning::file not found {path} (skipping)")
+                  return False
+              s = p.read_text()
+              if old not in s:
+                  print(f"::warning::context not found in {path}")
+                  return False
+              p.write_text(s.replace(old, new, 1))
+              print(f"patched {path}")
+              return True
+          f = 'android_configure.py'
+          ok = True
+          ok &= patch(f,
+              'if platform.system() != "Linux" and platform.system() != "Darwin":\n'
+              '    print("android-configure is currently only supported on Linux and Darwin.")',
+              'if platform.system() == "Windows":\n'
+              '    print("android-configure is not supported on Windows yet.")')
+          ok &= patch(f,
+              'os.environ[\'CXX\'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" + "clang++"',
+              'os.environ[\'CXX\'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" + "clang++"\n'
+              '# nodejs-mobile patch: add host CC and CXX\n'
+              'os.environ[\'CC_host\'] = os.popen(\'command -v gcc\').read().strip()\n'
+              'os.environ[\'CXX_host\'] = os.popen(\'command -v g++\').read().strip()')
+          ok &= patch(f,
+              'GYP_DEFINES += " android_ndk_path=" + android_ndk_path',
+              'GYP_DEFINES += " ANDROID_NDK_ROOT=" + android_ndk_path\n'
+              'GYP_DEFINES += " ANDROID_NDK_SYSROOT=" + toolchain_path + "/sysroot"')
+          ok &= patch(f,
+              '    os.system("./configure --dest-cpu=" + DEST_CPU + " --dest-os=android --openssl-no-asm --cross-compiling")',
+              '    # nodejs-mobile patch: added --with-intl=none and --shared\n'
+              '    os.system("./configure --dest-cpu=" + DEST_CPU + " --dest-os=android --openssl-no-asm --with-intl=none --cross-compiling --shared")')
+          if not ok:
+              print("::warning::one or more android_configure.py patches did not match")
+          else:
+              print("android-configure patch set applied")
+          PYEOF
       # ---------- 3c. Patch OpenSSL asm target selection for Android ----------
       # Root cause of "invalid output constraint '=a'/'+d' in asm" in
       # deps/openssl/openssl/crypto/bn/asm/x86_64-gcc.c, on BOTH arm64-v8a
