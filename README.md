@@ -44,16 +44,10 @@ armeabi-v7a 仍属实验性质，原因是上游 V8 存在交叉编译缺陷。�
 
 | 压缩包内文件 | 作用 |
 |---|---|
-| node | 命令行二进制文件，完全静态、已剥离符号、PIE，可直接运行 |
-| libc++_shared.so | NDK 自带的 libc++ 副本，用于编译原生插件时使用 |
+| libnode.so 
 | include/node/*.h | Node、V8、libuv 的头文件，加上 config.gypi，用于编译 N-API 插件 |
 
-此发布包不包含 libnode.so，node 二进制文件本身已是完全静态。如果你的 Android 应用需要通过 System.loadLibrary() 加载，请自行将文件重命名为 lib*.so 格式。
-
-### 自定义库名称
-
-在工作流输入中设置 lib_name，例如 aurora，生成结果会变成 aurora-android-<abi>.zip，对应头文件也会同步调整。
-
+libnode.so for mobile System.loadLibrary() 加载，
 ---
 
 ## 构建模式
