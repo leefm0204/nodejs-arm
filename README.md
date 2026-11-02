@@ -1,6 +1,6 @@
 <div align="center">
 
-# Node.js for Android (ARM)
+# Node.js libnode.so for Android (ARM)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Towartz/nodejs-arm/node-android.yml?branch=main&label=CI&logo=github)](https://github.com/Towartz/nodejs-arm/actions)
 [![Latest release](https://img.shields.io/badge/latest%20release-v26.x--run150-blue?logo=github)](https://github.com/Towartz/nodejs-arm/releases/tag/node-android-v26.x--run150)
